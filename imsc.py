@@ -12,7 +12,7 @@ from argparse import ArgumentParser, RawTextHelpFormatter
 booruBoards = ['futabooru', 'boob', 'catgirls', 'nekochu', 'vocalo']
 # but don't change anything below
 
-parser = ArgumentParser(prog='python imsc.py', description='\n  Available sources: google, rule34.xxx, rule34.paheal.net, danbooru,\n                     *.booru.org, hypnohub, all\n\n  default booru.org-boards:\n   ' + str(' '.join(booruBoards)) + '\n\n  Keyword / Tag rules:\n   rule34.xxx / rule34.paheal.net / danbooru:\n    - tags consisting of more than 1 word shouldn\'t be like this "cute neko",\n      but like this "cute_neko" (without the double-quotes)\n   google:\n    - don\'t use special characters like %00 or stuff like that', epilog='  created by s94\n', formatter_class=RawTextHelpFormatter,)
+parser = ArgumentParser(prog='python imsc.py', description='\n  Available sources: google, rule34.xxx, rule34.paheal.net, danbooru,\n                     *.booru.org, hypnohub, all_boorus, all\n\n  default booru.org-boards:\n   ' + str(' '.join(booruBoards)) + '\n\n  Keyword / Tag rules:\n   rule34.xxx / rule34.paheal.net / danbooru:\n    - tags consisting of more than 1 word shouldn\'t be like this "cute neko",\n      but like this "cute_neko" (without the double-quotes)\n   google:\n    - don\'t use special characters like %00 or stuff like that', epilog='  created by s94\n', formatter_class=RawTextHelpFormatter,)
 parser.add_argument('keywords', metavar='keywords', type=str, nargs='+', help='keyword(s) used for search')
 parser.add_argument('-v', '--verbose', action='store_true', dest='verbose', default=False, help='output more detail')
 parser.add_argument('-l', '--save-links', const='links.txt', default=None, help='save links to output file (default: links.txt)', nargs='?', dest='link_file')
@@ -312,7 +312,7 @@ if (args.source == 'rule34.paheal.net' or args.source == 'all'):
         items += buffer
         i += 1
 if (args.source == 'danbooru' or args.source == 'all'):
-    url = create_booru_url(danbooru.donmai.us)
+    url = 'http://danbooru.donmai.us/posts?tags=' + create_valid_url_str()
     if (args.verbose):
         print('Query URL = ' + url)
     i = 0
@@ -324,9 +324,9 @@ if (args.source == 'danbooru' or args.source == 'all'):
             break
         items += buffer
         i += 1
-if (args.source[-9:] == 'booru.org'):
+if (args.source != 'danbooru' and args.source[-9:] == 'booru.org'):
     items += get_booru_buffer(args.source[:-10])
-if (args.source == 'all'):
+if (args.source == 'all' or args.source == 'all_boorus'):
     for board in booruBoards:
         items += get_booru_buffer(board)
 if (args.source == 'hypnohub' or args.source == 'all'):
@@ -400,6 +400,7 @@ while(k < len(items)):
     k += 1
     if (not args.verbose):
         progress(k, len(items), "download progress")
+print('')
 if (successCount == 0):
     print("all downloads failed!")
 else:
