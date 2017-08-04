@@ -8,7 +8,11 @@ import binascii
 from HTMLParser import HTMLParser
 from argparse import ArgumentParser, RawTextHelpFormatter
 
-parser = ArgumentParser(prog='python imsc.py', description='\n  Available sources: google, rule34.xxx, rule34.paheal.net, danbooru,\n                     *.booru.org, all\n\n  Keyword / Tag rules:\n   rule34.xxx / rule34.paheal.net / danbooru:\n    - tags consisting of more than 1 word shouldn\'t be like this "cute neko",\n      but like this "cute_neko" (without the double-quotes)\n   google:\n    - don\'t use special characters like %00 or stuff like that', epilog='  created by s94\n', formatter_class=RawTextHelpFormatter,)
+# You may change these
+booruBoards = ['futabooru', 'boob', 'catgirls', 'nekochu', 'vocalo']
+# but don't change anything below
+
+parser = ArgumentParser(prog='python imsc.py', description='\n  Available sources: google, rule34.xxx, rule34.paheal.net, danbooru,\n                     *.booru.org, hypnohub, all\n\n  default booru.org-boards:\n   ' + str(' '.join(booruBoards)) + '\n\n  Keyword / Tag rules:\n   rule34.xxx / rule34.paheal.net / danbooru:\n    - tags consisting of more than 1 word shouldn\'t be like this "cute neko",\n      but like this "cute_neko" (without the double-quotes)\n   google:\n    - don\'t use special characters like %00 or stuff like that', epilog='  created by s94\n', formatter_class=RawTextHelpFormatter,)
 parser.add_argument('keywords', metavar='keywords', type=str, nargs='+', help='keyword(s) used for search')
 parser.add_argument('-v', '--verbose', action='store_true', dest='verbose', default=False, help='output more detail')
 parser.add_argument('-l', '--save-links', const='links.txt', default=None, help='save links to output file (default: links.txt)', nargs='?', dest='link_file')
@@ -18,8 +22,6 @@ parser.add_argument('-c', '--count', nargs='?', default=1, help='how many pages 
 parser.add_argument('--allow-webms', action='store_true', dest='allow_webms', default=False, help='allow download of WebM files')
 parser.add_argument('--search-only', action='store_true', dest='search_only', default=False, help='only collect links from sources (prevent downloading)')
 args = parser.parse_args()
-
-booruBoards = ['futabooru', 'scat', 'hic', 'boob', 'catgirls', 'nekochu', 'vocalo']
 
 class LinkTagParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
@@ -65,12 +67,19 @@ class MediaTagParser(HTMLParser):
         HTMLParser.feed(self, source)
         self.keyword = keyword
 
+class STATIC():
+    ITEMCOUNT = 0
+
 def progress(count, total, suffix=''):
     bar_len = 60
     filled_len = int(round(bar_len * count / float(total)))
     percents = round(100.0 * count / float(total), 1)
     bar = '=' * filled_len + '-' * (bar_len - filled_len)
     sys.stdout.write('[%s] %s%s ...%s\r' % (bar, percents, '%', suffix))
+    sys.stdout.flush()
+
+def textcounter():
+    sys.stdout.write(str(STATIC.ITEMCOUNT) + ' items found.' + '\r')
     sys.stdout.flush()
 
 def download_page(url):
@@ -122,6 +131,9 @@ def GOOGLE_images_get_all_items(page):
             items.append(item)
             time.sleep(0.1)
             page = page[end_content:]
+        STATIC.ITEMCOUNT += 1
+        textcounter()
+    print('')
     return items
 
 def R34XXX_fetch_media_url(s):
@@ -138,8 +150,12 @@ def R34XXX_media_get_all_items(page):
         if 'class="preview"' in line:
             parser.feed(line)
             items.append(R34XXX_fetch_media_url(download_page('http://rule34.xxx/' + parser.get_href_link())))
+            STATIC.ITEMCOUNT += 1
             if (args.verbose or args.search_only):
                 print('Found new link at: ' + items[-1])
+            else:
+                textcounter()
+    print('')
     return items
 
 def PAHEAL_media_get_all_items(page):
@@ -151,8 +167,12 @@ def PAHEAL_media_get_all_items(page):
             attr = parser.get_attr()[0][1]
             if (attr != '#'):
                 items.append(attr)
-                if (args.verbose or args.search_only):
+                STATIC.ITEMCOUNT += 1
+                if (args.verbose):
                     print('Found new link at: ' + str(parser.get_attr()[0][1]))
+                else:
+                    textcounter()
+    print('')
     return items
 
 def DANBOR_fetch_media_url(s):
@@ -169,12 +189,19 @@ def DANBOR_media_get_all_items(page):
         if '<a href="/posts/' in line:
             parser.feed(line)
             items.append(DANBOR_fetch_media_url(download_page('http://danbooru.donmai.us' + parser.get_attr()[0][1])))
-            if (args.verbose or args.search_only):
+            STATIC.ITEMCOUNT += 1
+            if (args.verbose):
                 print('Found new link at: ' + items[-1])
+            else:
+                textcounter()
+    print('')
     return items
 
+def create_valid_url_str():
+    return str(urllib2.quote(str('____PLUS____'.join(args.keywords))).replace('____PLUS____', '+'))
+
 def create_booru_url(base_addr):
-    return 'http://' + base_addr + '/index.php?page=post&s=list&tags=' + str(urllib2.quote(str('____PLUS____'.join(args.keywords))).replace('____PLUS____', '+'))
+    return 'http://' + base_addr + '/index.php?page=post&s=list&tags=' + create_valid_url_str()
 
 def XBOORU_fetch_media_url(s):
     for line in s.splitlines():
@@ -190,8 +217,29 @@ def XBOORU_media_get_all_items(page, base_addr):
         if (('<a id="p' in line) and ('href="index.php?page=post&s=view&id=' in line)):
             parser.feed(line)
             items.append(XBOORU_fetch_media_url(download_page('http://' + base_addr + '/' + parser.get_attr()[1][1])))
-            if (args.verbose or args.search_only):
+            STATIC.ITEMCOUNT += 1
+            if (args.verbose):
                 print('Found new link at: ' + items[-1])
+            else:
+                textcounter()
+    print('')
+    return items
+
+def HYPHUB_media_get_all_items(page):
+    items = []
+    parser = LinkTagParser()
+    for line in page.splitlines():
+        if 'href="//hypnohub.net//data/image/' in line:
+            parser.feed(line)
+            attr = 'http:' + parser.get_attr()[1][1]
+            if (attr != '#'):
+                items.append(attr)
+                STATIC.ITEMCOUNT += 1
+                if (args.verbose):
+                    print('Found new link at: ' + attr)
+                else:
+                    textcounter()
+    print('')
     return items
 
 def get_booru_buffer(board):
@@ -281,6 +329,19 @@ if (args.source[-9:] == 'booru.org'):
 if (args.source == 'all'):
     for board in booruBoards:
         items += get_booru_buffer(board)
+if (args.source == 'hypnohub' or args.source == 'all'):
+    url = 'http://hypnohub.net/post?tags=' + create_valid_url_str()
+    if (args.verbose):
+        print('Query URL = ' + url)
+    i = 0
+    while i < int(args.count):
+        raw_html = (download_page(url + '&page=' + str(i + 1)))
+        time.sleep(0.1)
+        buffer = HYPHUB_media_get_all_items(raw_html)
+        if (len(buffer) < 1):
+            break
+        items += buffer
+        i += 1
 #if (args.verbose): print ("Image Links = " + str(items))
 print ("Total Image Links = " + str(len(items)))
 
