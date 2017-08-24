@@ -21,6 +21,7 @@ parser.add_argument('-s', '--source', nargs='?', default='google', help='the sit
 parser.add_argument('-c', '--count', nargs='?', default=1, help='how many pages should I download. doesn\'t work with google (default: 1)', const=1, dest='count')
 parser.add_argument('--allow-webms', action='store_true', dest='allow_webms', default=False, help='allow download of WebM files')
 parser.add_argument('--search-only', action='store_true', dest='search_only', default=False, help='only collect links from sources (prevent downloading)')
+parser.add_argument('--version', action='version', version='0.2')
 args = parser.parse_args()
 
 class LinkTagParser(HTMLParser):
@@ -50,7 +51,7 @@ class LinkTagParser(HTMLParser):
 
 class MediaTagParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
-        if (tag == 'img'):
+        if (tag == 'img' or tag == 'video'):
             if (self.keyword == None):
                 self.attrs = attrs
             else:
@@ -69,6 +70,7 @@ class MediaTagParser(HTMLParser):
 
 class STATIC():
     ITEMCOUNT = 0
+    TOTALITEMCOUNT = 0
 
 def progress(count, total, suffix=''):
     bar_len = 60
@@ -134,6 +136,8 @@ def GOOGLE_images_get_all_items(page):
         STATIC.ITEMCOUNT += 1
         textcounter()
     print('')
+    STATIC.TOTALITEMCOUNT += STATIC.ITEMCOUNT
+    STATIC.ITEMCOUNT = 0
     return items
 
 def R34XXX_fetch_media_url(s):
@@ -149,13 +153,16 @@ def R34XXX_media_get_all_items(page):
     for line in page.splitlines():
         if 'class="preview"' in line:
             parser.feed(line)
-            items.append(R34XXX_fetch_media_url(download_page('http://rule34.xxx/' + parser.get_href_link())))
-            STATIC.ITEMCOUNT += 1
-            if (args.verbose or args.search_only):
-                print('Found new link at: ' + items[-1])
-            else:
-                textcounter()
+            if (parser.get_href_link() != '' and parser.get_href_link() != ' '):
+                items.append(R34XXX_fetch_media_url(download_page('http://rule34.xxx/' + parser.get_href_link())))
+                STATIC.ITEMCOUNT += 1
+                if (args.verbose):
+                    print('Found new link at: ' + items[-1])
+                else:
+                    textcounter()
     print('')
+    STATIC.TOTALITEMCOUNT += STATIC.ITEMCOUNT
+    STATIC.ITEMCOUNT = 0
     return items
 
 def PAHEAL_media_get_all_items(page):
@@ -173,6 +180,8 @@ def PAHEAL_media_get_all_items(page):
                 else:
                     textcounter()
     print('')
+    STATIC.TOTALITEMCOUNT += STATIC.ITEMCOUNT
+    STATIC.ITEMCOUNT = 0
     return items
 
 def DANBOR_fetch_media_url(s):
@@ -195,6 +204,8 @@ def DANBOR_media_get_all_items(page):
             else:
                 textcounter()
     print('')
+    STATIC.TOTALITEMCOUNT += STATIC.ITEMCOUNT
+    STATIC.ITEMCOUNT = 0
     return items
 
 def create_valid_url_str():
@@ -205,16 +216,17 @@ def create_booru_url(base_addr):
 
 def XBOORU_fetch_media_url(s):
     for line in s.splitlines():
-        if (('<img alt="img" src="http://img.booru.org/' in line) and (not ('itemprop="thumbnailUrl"' in line))):
+        if (('src="http://img.booru.org/' in line) and (not ('itemprop="thumbnailUrl"' in line))):
             temp_parser = MediaTagParser()
             temp_parser.feed(line)
             return temp_parser.get_attr()[1][1]
+    return None
 
 def XBOORU_media_get_all_items(page, base_addr):
     items = []
     parser = LinkTagParser()
     for line in page.splitlines():
-        if (('<a id="p' in line) and ('href="index.php?page=post&s=view&id=' in line)):
+        if (('<a id="p' in line) and ('href="index.php?page=post&amp;s=view&amp;id=' in line) and (not ('<span style="color: #' in line))):
             parser.feed(line)
             items.append(XBOORU_fetch_media_url(download_page('http://' + base_addr + '/' + parser.get_attr()[1][1])))
             STATIC.ITEMCOUNT += 1
@@ -223,6 +235,8 @@ def XBOORU_media_get_all_items(page, base_addr):
             else:
                 textcounter()
     print('')
+    STATIC.TOTALITEMCOUNT += STATIC.ITEMCOUNT
+    STATIC.ITEMCOUNT = 0
     return items
 
 def HYPHUB_media_get_all_items(page):
@@ -240,16 +254,18 @@ def HYPHUB_media_get_all_items(page):
                 else:
                     textcounter()
     print('')
+    STATIC.TOTALITEMCOUNT += STATIC.ITEMCOUNT
+    STATIC.ITEMCOUNT = 0
     return items
 
 def get_booru_buffer(board):
     buffer = []
     url = create_booru_url(board + '.booru.org')
-    if (args.verbose):
+    if (args.verbose or args.search_only):
         print('Query URL = ' + url)
     i = 0
     while i < int(args.count):
-        raw_html = (download_page(url + '&page=' + str(i + 1)))
+        raw_html = (download_page(url + '&pid=' + str(i * 20)))
         time.sleep(0.1)
         page_buffer = XBOORU_media_get_all_items(raw_html, args.source)
         if (len(page_buffer) < 1):
@@ -278,16 +294,16 @@ if (not args.search_only):
 
 if (args.count < 1):
     raise ValueError, 'count must be at least 1'
-if (args.source == 'google' or args.source == 'all'):
+if (args.source == 'google'):
     url = 'https://www.google.com/search?q=' + str('%20'.join(args.keywords)) + '&espv=2&biw=1366&bih=667&site=webhp&source=lnms&tbm=isch&sa=X&ei=XosDVaCXD8TasATItgE&ved=0CAcQ_AUoAg'
-    if (args.verbose):
+    if (args.verbose or args.search_only):
         print('Query URL = ' + url)
     raw_html =  (download_page(url))
     time.sleep(0.1)
     items = items + (GOOGLE_images_get_all_items(raw_html))
 if (args.source == 'rule34.xxx' or args.source == 'all'):
     url = create_booru_url('rule34.xxx')
-    if (args.verbose):
+    if (args.verbose or args.search_only):
         print('Query URL = ' + url)
     i = 0
     while i < int(args.count):
@@ -300,7 +316,7 @@ if (args.source == 'rule34.xxx' or args.source == 'all'):
         i += 1
 if (args.source == 'rule34.paheal.net' or args.source == 'all'):
     url = 'http://rule34.paheal.net/post/list/' + str(urllib2.quote(' '.join(args.keywords))) + '/'
-    if (args.verbose):
+    if (args.verbose or args.search_only):
         print('Query URL = ' + url)
     i = 0
     while i < int(args.count):
@@ -313,7 +329,7 @@ if (args.source == 'rule34.paheal.net' or args.source == 'all'):
         i += 1
 if (args.source == 'danbooru' or args.source == 'all'):
     url = 'http://danbooru.donmai.us/posts?tags=' + create_valid_url_str()
-    if (args.verbose):
+    if (args.verbose or args.search_only):
         print('Query URL = ' + url)
     i = 0
     while i < int(args.count):
@@ -331,7 +347,7 @@ if (args.source == 'all' or args.source == 'all_boorus'):
         items += get_booru_buffer(board)
 if (args.source == 'hypnohub' or args.source == 'all'):
     url = 'http://hypnohub.net/post?tags=' + create_valid_url_str()
-    if (args.verbose):
+    if (args.verbose or args.search_only):
         print('Query URL = ' + url)
     i = 0
     while i < int(args.count):
@@ -343,7 +359,7 @@ if (args.source == 'hypnohub' or args.source == 'all'):
         items += buffer
         i += 1
 #if (args.verbose): print ("Image Links = " + str(items))
-print ("Total Image Links = " + str(len(items)))
+print ("Total Image Links = " + str(STATIC.TOTALITEMCOUNT))
 
 if (args.link_file != None):
     info = open(args.link_file, 'a')
@@ -407,4 +423,4 @@ else:
     print(str(len(items) - errorCount) + " / " + str(len(items)) + " downloads successful.")
     if (skipCount > 0):
         print(str(skipCount) + " skipped.")
-    print('')
+print('')
